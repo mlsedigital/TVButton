@@ -7,22 +7,22 @@
 //
 
 import Foundation
-
 /**
-Parallax Layer Object
-*/
+ Parallax Layer Object
+ */
 public struct TVButtonLayer {
-    /// UIImage to display. It is essential that all images have the same dimensions.
-    var internalImage: UIImage?
+    /// UIView to display.
+    var view: UIView?
+    var layerPressed: ((CGPoint?) -> ())?
 }
 
 public extension TVButtonLayer {
     /**
-     Initialise the TVButton layer by passing a UIImage
+     Initialise the TVButton layer by passing a View
      - Parameter image: UIImage to display. It is essential that all images have the same dimensions.
      */
-    public init(image: UIImage) {
-        self.init(internalImage: image)
+    init(view: UIView) {
+        self.init(view: view, layerPressed: nil)
     }
 }
 
@@ -40,46 +40,31 @@ open class TVButton: UIButton, UIGestureRecognizerDelegate {
     internal var panGestureRecognizer: UIPanGestureRecognizer?
     internal var tapGestureRecognizer: UITapGestureRecognizer?
     
-    // MARK: Public variables
-    
     /// Stack of TVButtonLayers inside the button
-    open var layers: [TVButtonLayer]? {
-        didSet {
-            // Remove existing parallax layer views
-            for subview in containerView.subviews {
-                subview.removeFromSuperview()
-            }
-            // Instantiate an imageview with corners for every layer
-            for layer in layers! {
-                let imageView = UIImageView(image: layer.internalImage)
-                imageView.layer.cornerRadius = cornerRadius
-                imageView.clipsToBounds = true
-                imageView.layer.needsDisplayOnBoundsChange = true
-                containerView.addSubview(imageView)
-            }
-            // Add specular shine effect
-            let frameworkBundle = Bundle(for: TVButton.self)
-            let specularViewPath = frameworkBundle.path(forResource: "Specular", ofType: "png")
-            specularView.image = UIImage(contentsOfFile:specularViewPath!)
-            self.containerView.addSubview(specularView)
-        }
-    }
-
+    open var layers: [TVButtonLayer]?
+    
     /// Determines the intensity of the parallax depth effect. Default is 1.0.
     open var parallaxIntensity: CGFloat = defaultParallaxIntensity
-
+    
     /// Shadow color for the TVButton. Default is black.
-    open var shadowColor: UIColor = UIColor.black {
+    internal var shadowColor: UIColor = UIColor.black {
         didSet {
             self.layer.shadowColor = shadowColor.cgColor
         }
     }
     
+    internal func setLayers(layers: [TVButtonLayer]) {
+        self.layers = layers
+        configureLayers()
+    }
+    
+    // MARK: Public variables and functions
+    
     // MARK: Lifecycle
     
     /**
-    Default init for TVObject with coder.
-    */
+     Default init for TVObject with coder.
+     */
     public required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
         setup()
@@ -102,7 +87,7 @@ open class TVButton: UIButton, UIGestureRecognizerDelegate {
         self.layer.masksToBounds = false;
         let shadowPath = UIBezierPath(roundedRect: self.bounds, cornerRadius: cornerRadius)
         self.layer.shadowPath = shadowPath.cgPath
-
+        
         // Stop here if animation is on
         if let animation = tvButtonAnimation {
             if animation.highlightMode == true {
@@ -115,15 +100,10 @@ open class TVButton: UIButton, UIGestureRecognizerDelegate {
             if subview == specularView {
                 subview.frame = CGRect(origin: subview.frame.origin, size: CGSize(width: specularScale * containerView.frame.size.width, height: specularScale * containerView.frame.size.height))
             }
-            else {
-                subview.frame = CGRect(origin: subview.frame.origin, size: containerView.frame.size)
-            }
         }
     }
     
-    /**
-     Button setup. Conducted on init.
-    */
+    //MARK: - Setup and configuration
     func setup() {
         containerView.isUserInteractionEnabled = false
         self.addSubview(containerView)
@@ -134,18 +114,40 @@ open class TVButton: UIButton, UIGestureRecognizerDelegate {
         specularView.contentMode = UIViewContentMode.scaleAspectFill
         self.layer.shadowRadius = self.bounds.size.height/(2*shadowFactor)
         self.layer.shadowOffset = CGSize(width: 0.0, height: shadowFactor/3)
-        self.layer.shadowOpacity = 0.5;
+        self.layer.shadowOpacity = 0.5
         tvButtonAnimation = TVButtonAnimation(button: self)
         self.addGestureRecognizers()
     }
     
+    func configureLayers() {
+        // Remove existing parallax layer views
+        for subview in containerView.subviews {
+            subview.removeFromSuperview()
+        }
+        
+        // Instantiate an imageview with corners for every layer
+        for layer in layers! {
+            if let view = layer.view {
+                view.layer.cornerRadius = cornerRadius
+                view.clipsToBounds = true
+                view.layer.needsDisplayOnBoundsChange = true
+                containerView.addSubview(view)
+                view.pinToSuperView()
+            }
+        }
+        // Add specular shine effect
+        let frameworkBundle = Bundle(for: TVButton.self)
+        let specularViewPath = frameworkBundle.path(forResource: "Specular", ofType: "png")
+        specularView.image = UIImage(contentsOfFile:specularViewPath!)
+        self.containerView.addSubview(specularView)
+    }
     
     // MARK: UIGestureRecognizer actions and delegate
     
     /**
-    Adds the gesture recognizers to the button.
-    */
-    func addGestureRecognizers(){
+     Adds the gesture recognizers to the button.
+     */
+    func addGestureRecognizers() {
         panGestureRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         panGestureRecognizer?.delegate = self
         self.addGestureRecognizer(panGestureRecognizer!)
@@ -160,7 +162,7 @@ open class TVButton: UIButton, UIGestureRecognizerDelegate {
      Pan gesture recognizer handler.
      - Parameter gestureRecognizer: TVButton's UIPanGestureRecognizer.
      */
-    func handlePan(_ gestureRecognizer: UIGestureRecognizer) {
+    @objc func handlePan(_ gestureRecognizer: UIGestureRecognizer) {
         self.gestureRecognizerDidUpdate(gestureRecognizer)
     }
     
@@ -168,7 +170,7 @@ open class TVButton: UIButton, UIGestureRecognizerDelegate {
      Long press gesture recognizer handler.
      - Parameter gestureRecognizer: TVButton's UILongPressGestureRecognizer.
      */
-    func handleLongPress(_ gestureRecognizer: UIGestureRecognizer) {
+    @objc func handleLongPress(_ gestureRecognizer: UIGestureRecognizer) {
         self.gestureRecognizerDidUpdate(gestureRecognizer)
     }
     
@@ -176,8 +178,9 @@ open class TVButton: UIButton, UIGestureRecognizerDelegate {
      Tap gesture recognizer handler. Sends TouchUpInside to super.
      - Parameter gestureRecognizer: TVButton's UITapGestureRecognizer.
      */
-    func handleTap(_ gestureRecognizer: UIGestureRecognizer) {
+    @objc func handleTap(_ gestureRecognizer: UIGestureRecognizer) {
         super.sendActions(for: UIControlEvents.touchUpInside)
+        self.gestureRecognizerDidUpdate(gestureRecognizer)
     }
     
     /**
@@ -185,10 +188,19 @@ open class TVButton: UIButton, UIGestureRecognizerDelegate {
      - Parameter gestureRecognizer: either UITapGestureRecognizer or UILongPressGestureRecognizer.
      */
     func gestureRecognizerDidUpdate(_ gestureRecognizer: UIGestureRecognizer){
-        if layers == nil {
+        guard let layers = layers else {
             return
         }
         let point = gestureRecognizer.location(in: self)
+        
+        if gestureRecognizer == tapGestureRecognizer {
+            for layer in layers {
+                if let function = layer.layerPressed {
+                    function(point)
+                }
+            }
+        }
+        
         if let animation = tvButtonAnimation {
             if gestureRecognizer.state == .began {
                 animation.enterMovement()
@@ -209,12 +221,27 @@ open class TVButton: UIButton, UIGestureRecognizerDelegate {
     // MARK: UIGestureRecognizerDelegate
     
     /**
-    UIGestureRecognizerDelegate function to allow two UIGestureRecognizers to be recognized simultaneously.
-    - Parameter gestureRecognizer: First gestureRecognizer.
-    - Parameter otherGestureRecognizer: Second gestureRecognizer.
-    */
+     UIGestureRecognizerDelegate function to allow two UIGestureRecognizers to be recognized simultaneously.
+     - Parameter gestureRecognizer: First gestureRecognizer.
+     - Parameter otherGestureRecognizer: Second gestureRecognizer.
+     */
     open func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        return true
+        return false
     }
-    
 }
+
+extension UIView {
+    func pinToSuperView() {
+        guard let superview = self.superview else {
+            return
+        }
+        
+        self.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            self.leadingAnchor.constraint(equalTo: superview.leadingAnchor),
+            self.trailingAnchor.constraint(equalTo: superview.trailingAnchor),
+            self.topAnchor.constraint(equalTo: superview.topAnchor),
+            self.bottomAnchor.constraint(equalTo: superview.bottomAnchor)])
+    }
+}
+
